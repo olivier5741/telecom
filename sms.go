@@ -77,12 +77,12 @@ type AddressResolutionFilter struct {
 func (f *AddressResolutionFilter) Filter(input <-chan Sms, output chan<- Sms) {
 	go func() {
 		for i := range input {
-			for _,a := range i.Addresses() {
+			for _, a := range i.Addresses() {
 				if a.Address() == "" && i.App.ID != nil {
 					if address, ok := f.resolution[*i.App.ID]; ok {
 						a.SetAddress(address)
 					}
-				}				
+				}
 			}
 			output <- i
 		}
