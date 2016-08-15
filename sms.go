@@ -223,6 +223,10 @@ func main() {
 	blackList := map[string]bool{"0476283272": true}
 	resolution := map[uuid.UUID]string{*id: "0476283273"}
 	accounts := map[uuid.UUID]decimal.Decimal{*id: decimal.NewFromFloat(1)}
+	timeWindow := map[uuid.UUID]TimeMatcher{
+		*id: WeekTimeWindow{
+			[]WeekDayTimeWindow{
+				WeekDayTimeWindow{time.Monday, 9 * time.Hour, 18 * time.Hour}}}}
 
 	filter_1 := AddressResolutionFilter{resolution}
 	filter_1.Filter(input, input1)
@@ -242,7 +246,7 @@ func main() {
 	filter3 := DeadEndFilter{"Insufficient credit"}
 	filter3.Filter(insufficientCredit)
 
-	filter4 := TimeWindowDispatcher{*new(map[uuid.UUID]TimeMatcher)}
+	filter4 := TimeWindowDispatcher{timeWindow}
 	filter4.Dispatch(sufficientCredit, execute, scheduled)
 
 	filter5 := DeadEndFilter{"Scheduled"}
