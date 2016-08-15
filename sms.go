@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/nu7hatch/gouuid"
-	"time"
 	"github.com/shopspring/decimal"
+	"time"
 )
 
 type Sms struct {
@@ -30,7 +30,7 @@ type App struct {
 
 type Pricing struct {
 	Price decimal.Decimal
-} 
+}
 
 type AddressGetter interface {
 	Address() string
@@ -120,20 +120,20 @@ type PrepaidDispatcher struct {
 	accounts map[uuid.UUID]decimal.Decimal
 }
 
-func (d *PrepaidDispatcher) Dispatch(input <-chan Sms, sufficientCredit chan<- Sms, insufficientCredit chan<- Sms){
+func (d *PrepaidDispatcher) Dispatch(input <-chan Sms, sufficientCredit chan<- Sms, insufficientCredit chan<- Sms) {
 	go func() {
 		for i := range input {
-			if account,ok := d.accounts[i.AppID()]; ok {
+			if account, ok := d.accounts[i.AppID()]; ok {
 				var inter = account.Sub(i.Price())
 				if inter.Cmp(decimal.NewFromFloat(0)) < 0 {
 					insufficientCredit <- i
-				}else{
+				} else {
 					fmt.Print("Credit : ")
-					fmt.Println(inter)	
+					fmt.Println(inter)
 					d.accounts[i.AppID()] = inter
 					sufficientCredit <- i
-				}							
-			}else{	
+				}
+			} else {
 				sufficientCredit <- i
 			}
 		}
@@ -179,12 +179,12 @@ func main() {
 
 	filter := BlackListFilter{blackList}
 	filter.Filter(output, whiteListed, blackListed)
-	
+
 	filter1 := DeadEndFilter{"Blacklisted"}
 	filter1.Filter(blackListed)
 
 	filter2 := PrepaidDispatcher{accounts}
-	filter2.Dispatch(whiteListed,sufficientCredit,insufficientCredit)
+	filter2.Dispatch(whiteListed, sufficientCredit, insufficientCredit)
 
 	filter3 := DeadEndFilter{"Sufficient credit"}
 	filter3.Filter(sufficientCredit)
