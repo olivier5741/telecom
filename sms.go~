@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/nu7hatch/gouuid"
+	"math/big"
 	"time"
-	"github.com/shopspring/decimal"
 )
 
 type Sms struct {
@@ -13,7 +13,7 @@ type Sms struct {
 	Sender   *Sender
 	Receiver *Receiver
 	App      *App
-	Pricing  *Pricing
+	Pricing  Pricing
 }
 
 type Receiver struct {
@@ -28,9 +28,7 @@ type App struct {
 	ID *uuid.UUID
 }
 
-type Pricing struct {
-	Price decimal.Decimal
-} 
+type Pricing *big.Rat
 
 type AddressGetter interface {
 	Address() string
@@ -39,18 +37,6 @@ type AddressGetter interface {
 type Addresser interface {
 	Address() string
 	SetAddress(address string)
-}
-
-type Apper interface {
-	AppID() uuid.UUID
-}
-
-func (s *Sms) AppID() uuid.UUID {
-	return *s.App.ID
-}
-
-func (s *Sms) Price() decimal.Decimal {
-	return s.Pricing.Price
 }
 
 func (s Receiver) Address() string {
@@ -104,38 +90,14 @@ func (f *AddressResolutionFilter) Filter(input <-chan Sms, output chan<- Sms) {
 }
 
 type PricingFilter struct {
-	price decimal.Decimal
+	price *big.Rat
 }
 
 func (f *PricingFilter) Filter(input <-chan Sms, output chan<- Sms) {
 	go func() {
 		for i := range input {
-			i.Pricing = &Pricing{f.price}
+			i.Pricing = f.price
 			output <- i
-		}
-	}()
-}
-
-type PrepaidDispatcher struct {
-	accounts map[uuid.UUID]decimal.Decimal
-}
-
-func (d *PrepaidDispatcher) Dispatch(input <-chan Sms, sufficientCredit chan<- Sms, insufficientCredit chan<- Sms){
-	go func() {
-		for i := range input {
-			if account,ok := d.accounts[i.AppID()]; ok {
-				var inter = account.Sub(i.Price())
-				if inter.Cmp(decimal.NewFromFloat(0)) < 0 {
-					insufficientCredit <- i
-				}else{
-					fmt.Print("Credit : ")
-					fmt.Println(inter)	
-					d.accounts[i.AppID()] = inter
-					sufficientCredit <- i
-				}							
-			}else{	
-				sufficientCredit <- i
-			}
 		}
 	}()
 }
@@ -163,38 +125,27 @@ func main() {
 	input := make(chan Sms)
 	input1 := make(chan Sms)
 	output := make(chan Sms)
-	blackListed := make(chan Sms)
 	whiteListed := make(chan Sms)
-	insufficientCredit := make(chan Sms)
-	sufficientCredit := make(chan Sms)
+	blackListed := make(chan Sms)
 	blackList := map[string]bool{"0476283272": true}
 	resolution := map[uuid.UUID]string{*id: "0476283273"}
-	accounts := map[uuid.UUID]decimal.Decimal{*id: decimal.NewFromFloat(1)}
 
 	filter_1 := AddressResolutionFilter{resolution}
 	filter_1.Filter(input, input1)
 
-	filter0 := PricingFilter{decimal.NewFromFloat(0.5)}
+	filter0 := PricingFilter{new(big.Rat).SetFloat64(0.05)}
 	filter0.Filter(input1, output)
 
 	filter := BlackListFilter{blackList}
 	filter.Filter(output, whiteListed, blackListed)
-	
+
 	filter1 := DeadEndFilter{"Blacklisted"}
 	filter1.Filter(blackListed)
-
-	filter2 := PrepaidDispatcher{accounts}
-	filter2.Dispatch(whiteListed,sufficientCredit,insufficientCredit)
-
-	filter3 := DeadEndFilter{"Sufficient credit"}
-	filter3.Filter(sufficientCredit)
-
-	filter4 := DeadEndFilter{"Insufficient credit"}
-	filter4.Filter(insufficientCredit)
+	filter2 := DeadEndFilter{"Whitelisted"}
+	filter2.Filter(whiteListed)
 
 	done := make(chan bool)
 	go func() {
-		input <- sms
 		input <- sms
 		input <- sms
 		input <- sms1
