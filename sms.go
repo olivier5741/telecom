@@ -25,9 +25,9 @@ type Sender struct {
 }
 
 type App struct {
-	ID *uuid.UUID
-	Order *Order
-	Fluid bool
+	ID         *uuid.UUID
+	Order      *Order
+	Fluid      bool
 	TimeWindow *uuid.UUID
 }
 
@@ -40,9 +40,9 @@ type WeekTimeWindow struct {
 }
 
 func (t WeekTimeWindow) Match(ti time.Time) bool {
-	var daytime time.Duration = time.Duration(ti.Hour()) * time.Hour + time.Duration(ti.Minute()) * time.Minute + time.Duration(ti.Second()) * time.Second
-	for _,i := range t.TimeWindows {
-		if ti.Weekday() == i.Weekday && daytime >= i.From && daytime <=i.To {
+	var daytime time.Duration = time.Duration(ti.Hour())*time.Hour + time.Duration(ti.Minute())*time.Minute + time.Duration(ti.Second())*time.Second
+	for _, i := range t.TimeWindows {
+		if ti.Weekday() == i.Weekday && daytime >= i.From && daytime <= i.To {
 			return true
 		}
 	}
@@ -55,8 +55,8 @@ type TimeMatcher interface {
 
 type WeekDayTimeWindow struct {
 	Weekday time.Weekday
-	From time.Duration
-	To time.Duration
+	From    time.Duration
+	To      time.Duration
 }
 
 type TimeWindowDispatcher struct {
@@ -70,7 +70,7 @@ func (d *TimeWindowDispatcher) Dispatch(input <-chan Sms, match chan<- Sms, noMa
 				if timeWindow.Match(time.Now()) {
 					match <- i
 				} else {
-					noMatch <-i
+					noMatch <- i
 				}
 			} else {
 				match <- i
@@ -223,7 +223,6 @@ func main() {
 	blackList := map[string]bool{"0476283272": true}
 	resolution := map[uuid.UUID]string{*id: "0476283273"}
 	accounts := map[uuid.UUID]decimal.Decimal{*id: decimal.NewFromFloat(1)}
-	
 
 	filter_1 := AddressResolutionFilter{resolution}
 	filter_1.Filter(input, input1)
