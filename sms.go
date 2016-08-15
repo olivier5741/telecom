@@ -26,6 +26,57 @@ type Sender struct {
 
 type App struct {
 	ID *uuid.UUID
+	Order *Order
+	Fluid bool
+	TimeWindow *uuid.UUID
+}
+
+type Order struct {
+	Number int
+}
+
+type WeekTimeWindow struct {
+	TimeWindows []WeekDayTimeWindow
+}
+
+func (t WeekTimeWindow) Match(ti time.Time) bool {
+	var daytime time.Duration = time.Duration(ti.Hour()) * time.Hour + time.Duration(ti.Minute()) * time.Minute + time.Duration(ti.Second()) * time.Second
+	for _,i := range t.TimeWindows {
+		if ti.Weekday() == i.Weekday && daytime >= i.From && daytime <=i.To {
+			return true
+		}
+	}
+	return false
+}
+
+type TimeMatcher interface {
+	Match(ti time.Time) bool
+}
+
+type WeekDayTimeWindow struct {
+	Weekday time.Weekday
+	From time.Duration
+	To time.Duration
+}
+
+type TimeWindowDispatcher struct {
+	timeWindows map[uuid.UUID]TimeMatcher
+}
+
+func (d *TimeWindowDispatcher) Dispatch(input <-chan Sms, match chan<- Sms, noMatch chan<- Sms) {
+	go func() {
+		for i := range input {
+			if timeWindow, ok := d.timeWindows[i.AppID()]; ok {
+				if timeWindow.Match(time.Now()) {
+					match <- i
+				} else {
+					noMatch <-i
+				}
+			} else {
+				match <- i
+			}
+		}
+	}()
 }
 
 type Pricing struct {
@@ -157,7 +208,7 @@ func (f *DeadEndFilter) Filter(input <-chan Sms) {
 func main() {
 
 	id, _ := uuid.NewV5(uuid.NamespaceURL, []byte("809R3NF2"))
-	sms := Sms{"Salut", &Sender{"8686"}, &Receiver{PhoneNumber: ""}, &App{id}, nil}
+	sms := Sms{"Salut", &Sender{"8686"}, &Receiver{PhoneNumber: ""}, &App{ID: id}, nil}
 	sms1 := Sms{"Salut", &Sender{PhoneNumber: "8686"}, &Receiver{PhoneNumber: "0476283272"}, nil, nil}
 
 	input := make(chan Sms)
@@ -167,9 +218,12 @@ func main() {
 	whiteListed := make(chan Sms)
 	insufficientCredit := make(chan Sms)
 	sufficientCredit := make(chan Sms)
+	scheduled := make(chan Sms)
+	execute := make(chan Sms)
 	blackList := map[string]bool{"0476283272": true}
 	resolution := map[uuid.UUID]string{*id: "0476283273"}
 	accounts := map[uuid.UUID]decimal.Decimal{*id: decimal.NewFromFloat(1)}
+	
 
 	filter_1 := AddressResolutionFilter{resolution}
 	filter_1.Filter(input, input1)
@@ -186,11 +240,17 @@ func main() {
 	filter2 := PrepaidDispatcher{accounts}
 	filter2.Dispatch(whiteListed, sufficientCredit, insufficientCredit)
 
-	filter3 := DeadEndFilter{"Sufficient credit"}
-	filter3.Filter(sufficientCredit)
+	filter3 := DeadEndFilter{"Insufficient credit"}
+	filter3.Filter(insufficientCredit)
 
-	filter4 := DeadEndFilter{"Insufficient credit"}
-	filter4.Filter(insufficientCredit)
+	filter4 := TimeWindowDispatcher{*new(map[uuid.UUID]TimeMatcher)}
+	filter4.Dispatch(sufficientCredit, execute, scheduled)
+
+	filter5 := DeadEndFilter{"Scheduled"}
+	filter5.Filter(scheduled)
+
+	filter6 := DeadEndFilter{"Execute"}
+	filter6.Filter(execute)
 
 	done := make(chan bool)
 	go func() {
