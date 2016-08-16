@@ -116,11 +116,11 @@ func (s *Sms) Addresses() []Addresser {
 	return []Addresser{s.Receiver}
 }
 
-type BlackListFilter struct {
+type BlackListDispatcher struct {
 	blackList map[string]bool
 }
 
-func (f *BlackListFilter) Filter(input <-chan Sms, whiteListed chan<- Sms, blackListed chan<- Sms) {
+func (f *BlackListDispatcher) Dispatch(input <-chan Sms, whiteListed chan<- Sms, blackListed chan<- Sms) {
 	go func() {
 		for i := range input {
 			for _, a := range i.Addresses() {
@@ -134,12 +134,12 @@ func (f *BlackListFilter) Filter(input <-chan Sms, whiteListed chan<- Sms, black
 	}()
 }
 
-type AddressResolutionFilter struct {
+type AddressResolutionMutator struct {
 	resolution map[uuid.UUID]string
 }
 
 // better if based on address and not sender
-func (f *AddressResolutionFilter) Filter(input <-chan Sms, output chan<- Sms) {
+func (f *AddressResolutionMutator) Mutate(input <-chan Sms, output chan<- Sms) {
 	go func() {
 		for i := range input {
 			for _, a := range i.Addresses() {
@@ -154,11 +154,11 @@ func (f *AddressResolutionFilter) Filter(input <-chan Sms, output chan<- Sms) {
 	}()
 }
 
-type PricingFilter struct {
+type PricingMutator struct {
 	price decimal.Decimal
 }
 
-func (f *PricingFilter) Filter(input <-chan Sms, output chan<- Sms) {
+func (f *PricingMutator) Mutate(input <-chan Sms, output chan<- Sms) {
 	go func() {
 		for i := range input {
 			i.Pricing = &Pricing{f.price}
@@ -191,11 +191,11 @@ func (d *PrepaidDispatcher) Dispatch(input <-chan Sms, sufficientCredit chan<- S
 	}()
 }
 
-type DeadEndFilter struct {
+type DeadEndConsumer struct {
 	name string
 }
 
-func (f *DeadEndFilter) Filter(input <-chan Sms) {
+func (f *DeadEndConsumer) Consume(input <-chan Sms) {
 	go func() {
 		for i := range input {
 			fmt.Print(f.name + " : ")
@@ -226,34 +226,34 @@ func main() {
 	timeWindow := map[uuid.UUID]TimeMatcher{
 		*id: WeekTimeWindow{
 			[]WeekDayTimeWindow{
-				WeekDayTimeWindow{time.Monday, 9 * time.Hour, 18 * time.Hour}}}}
+				{time.Monday, 9 * time.Hour, 18 * time.Hour}}}}
 
-	filter_1 := AddressResolutionFilter{resolution}
-	filter_1.Filter(input, input1)
+	filter_1 := AddressResolutionMutator{resolution}
+	filter_1.Mutate(input, input1)
 
-	filter0 := PricingFilter{decimal.NewFromFloat(0.5)}
-	filter0.Filter(input1, output)
+	filter0 := PricingMutator{decimal.NewFromFloat(0.5)}
+	filter0.Mutate(input1, output)
 
-	filter := BlackListFilter{blackList}
-	filter.Filter(output, whiteListed, blackListed)
+	filter := BlackListDispatcher{blackList}
+	filter.Dispatch(output, whiteListed, blackListed)
 
-	filter1 := DeadEndFilter{"Blacklisted"}
-	filter1.Filter(blackListed)
+	filter1 := DeadEndConsumer{"Blacklisted"}
+	filter1.Consume(blackListed)
 
 	filter2 := PrepaidDispatcher{accounts}
 	filter2.Dispatch(whiteListed, sufficientCredit, insufficientCredit)
 
-	filter3 := DeadEndFilter{"Insufficient credit"}
-	filter3.Filter(insufficientCredit)
+	filter3 := DeadEndConsumer{"Insufficient credit"}
+	filter3.Consume(insufficientCredit)
 
 	filter4 := TimeWindowDispatcher{timeWindow}
 	filter4.Dispatch(sufficientCredit, execute, scheduled)
 
-	filter5 := DeadEndFilter{"Scheduled"}
-	filter5.Filter(scheduled)
+	filter5 := DeadEndConsumer{"Scheduled"}
+	filter5.Consume(scheduled)
 
-	filter6 := DeadEndFilter{"Execute"}
-	filter6.Filter(execute)
+	filter6 := DeadEndConsumer{"Execute"}
+	filter6.Consume(execute)
 
 	done := make(chan bool)
 	go func() {
